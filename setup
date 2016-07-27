@@ -1,0 +1,51 @@
+#!/bin/bash
+
+DEVICE=${DEVICE:-""}
+
+die() {
+  echo "$@" >&2
+  exit 1
+}
+
+[[ $DEVICE ]] || die "no device"
+
+echo "Adding filesystem to '$DEVICE'.."
+
+sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' << EOF | fdisk $DEVICE
+  n # new partition
+  p # primary partition
+  1 # partition number 1
+    # default - start at beginning of disk
+    # default - use 100% of disk
+  p # print the in-memory partition table
+  w # write the partition table
+  q # and we're done
+EOF
+
+echo "Generating keyfile.asc.."
+dd if=/dev/urandom of=keyfile.asc bs=512 count=16
+
+PART=" ${DEVICE}1"
+echo "Encrypting '$PART' with keyfile.asc.."
+cryptsetup luksFormat $PART keyfile.asc -v -c aes-xts-plain64 -s 512 --iter-time 5000
+
+# # Open the encrypted partition as /dev/mapper/clear.
+cryptsetup luksOpen $PART clear --key-file=/private/keyfile.asc
+
+# # Create physical volume.
+# pvcreate /dev/mapper/clear
+
+# # Create volume group vg0.
+# vgcreate vg0 /dev/mapper/clear
+
+# # Create logical volume /dev/mapper/vg0-root
+# lvcreate -l 100%FREE vg0 -n root
+
+# # Create ext4 filesystem on the device.
+# mkfs.ext4 /dev/mapper/vg0-root
+
+# Run separate container with fileserver, sharing the device from host and its key.
+$ docker run --rm -it -v $(pwd)/private:/private --device=/dev/mapper/vg0-root:/media -p 443:443 hkjn/fs
+
+# # Mount and use the device.
+# mount /media /var/www
