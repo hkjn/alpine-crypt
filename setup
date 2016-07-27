@@ -22,6 +22,9 @@ sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' << EOF | fdisk $DEVICE
   q # and we're done
 EOF
 
+echo "Re-reading partition table.."
+parted
+
 echo "Generating keyfile.asc.."
 dd if=/dev/urandom of=keyfile.asc bs=512 count=16
 
@@ -29,7 +32,7 @@ PART=" ${DEVICE}1"
 echo "Encrypting '$PART' with keyfile.asc.."
 cryptsetup luksFormat $PART keyfile.asc -v -c aes-xts-plain64 -s 512 --iter-time 5000
 
-# # Open the encrypted partition as /dev/mapper/clear.
+echo "Opening encrypted partition to /dev/mapper/clear.."
 cryptsetup luksOpen $PART clear --key-file=/private/keyfile.asc
 
 # # Create physical volume.
